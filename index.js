@@ -9,6 +9,17 @@ const PORT = Number(process.env.SAMP_PORT || 7777);
 const ONLINE_NICK = 'เซิร์ฟเวอร์ออนไลน์🟢';
 const OFFLINE_NICK = 'เซิร์ฟเวอร์ออฟไลน์🔴';
 let lastServerOnline = null;
+let lastCpuUsage = 0;
+
+async function readCPU() {
+  try {
+    const cpu = await si.currentLoad();
+    lastCpuUsage = Math.round(cpu.currentLoad);
+  } catch (err) {
+    console.error('CPU:', err.message);
+  }
+  return lastCpuUsage;
+}
 
 async function updateNickname(online) {
   // Only change nicknames when the server status changes (or at startup).
@@ -58,9 +69,10 @@ function queryPlayers() {
 async function updatePlayers() {
   try {
     const players = await queryPlayers();
+    const cpuUsage = await readCPU();
     client.user.setPresence({
       status: 'online',
-      activities: [{ name: `ผู้เล่นออนไลน์ ${players} คน`, type: ActivityType.Playing }]
+      activities: [{ name: `Players: ${players} | Cpu: ${cpuUsage}%`, type: ActivityType.Playing }]
     });
     console.log('SA-MP players:', players);
     await updateNickname(true);
@@ -74,22 +86,10 @@ async function updatePlayers() {
   }
 }
 
-async function logCPU() {
-  try {
-    const cpu = await si.currentLoad();
-    console.log('AMD Ryzen 9 5950X CPU:', Math.round(cpu.currentLoad) + '%');
-    // Discord does not provide a supported API for dynamically editing bot About Me.
-  } catch (err) {
-    console.error('CPU:', err.message);
-  }
-}
-
 client.once('clientReady', () => {
   console.log('Bot online:', client.user.tag);
   updatePlayers();
-  logCPU();
   setInterval(updatePlayers, 15000);
-  setInterval(logCPU, 15000);
 });
 
 if (!process.env.TOKEN) throw new Error('Missing TOKEN in local .env');
