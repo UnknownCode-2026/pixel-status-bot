@@ -6,6 +6,28 @@ const dgram = require('node:dgram');
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const HOST = process.env.SAMP_IP || '127.0.0.1';
 const PORT = Number(process.env.SAMP_PORT || 7777);
+const ONLINE_NICK = 'เซิร์ฟเวอร์ออนไลน์🟢';
+const OFFLINE_NICK = 'เซิร์ฟเวอร์ออฟไลน์🔴';
+let lastServerOnline = null;
+
+async function updateNickname(online) {
+  // Only change nicknames when the server status changes (or at startup).
+  if (lastServerOnline === online) return;
+  lastServerOnline = online;
+  const nickname = online ? ONLINE_NICK : OFFLINE_NICK;
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      const me = await guild.members.fetchMe();
+      if (me.nickname !== nickname) {
+        await me.setNickname(nickname, 'SA-MP server status changed');
+      }
+      console.log(`[${guild.name}] Nickname: ${nickname}`);
+    } catch (err) {
+      console.error(`[${guild.name}] Cannot change nickname:`, err.message);
+    }
+  }
+}
+
 
 function queryPlayers() {
   return new Promise((resolve, reject) => {
@@ -41,8 +63,10 @@ async function updatePlayers() {
       activities: [{ name: `ผู้เล่นออนไลน์ ${players} คน`, type: ActivityType.Playing }]
     });
     console.log('SA-MP players:', players);
+    await updateNickname(true);
   } catch (err) {
     console.error('SA-MP:', err.message);
+    await updateNickname(false);
     client.user.setPresence({
       status: 'idle',
       activities: [{ name: 'เซิร์ฟเวอร์ออฟไลน์', type: ActivityType.Playing }]
