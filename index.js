@@ -67,23 +67,27 @@ function queryPlayers() {
 }
 
 async function updatePlayers() {
+  let players = null;
+  let online = false;
+
   try {
-    const players = await queryPlayers();
-    const cpuUsage = await readCPU();
-    client.user.setPresence({
-      status: 'online',
-      activities: [{ name: `Players: ${players} | Cpu: ${cpuUsage}%`, type: ActivityType.Playing }]
-    });
-    console.log('SA-MP players:', players);
-    await updateNickname(true);
+    players = await queryPlayers();
+    online = true;
   } catch (err) {
     console.error('SA-MP:', err.message);
-    await updateNickname(false);
-    client.user.setPresence({
-      status: 'idle',
-      activities: [{ name: 'เซิร์ฟเวอร์ออฟไลน์', type: ActivityType.Playing }]
-    });
   }
+
+  const cpuUsage = await readCPU();
+  client.user.setPresence({
+    status: online ? 'online' : 'idle',
+    activities: [{
+      name: `Players: ${players === null ? 'null' : players} | Cpu: ${cpuUsage}%`,
+      type: ActivityType.Playing
+    }]
+  });
+
+  await updateNickname(online);
+  console.log(`[STATUS] Players: ${players === null ? 'null' : players} | Cpu: ${cpuUsage}%`);
 }
 
 client.once('clientReady', () => {
