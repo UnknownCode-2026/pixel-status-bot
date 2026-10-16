@@ -1,0 +1,72 @@
+require('dotenv').config();
+const { Client, GatewayIntentBits, ActivityType } = require('discord.js');
+const si = require('systeminformation');
+const dgram = require('node:dgram');
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const HOST = process.env.SAMP_IP || '127.0.0.1';
+const PORT = Number(process.env.SAMP_PORT || 7777);
+
+function queryPlayers() {
+  return new Promise((resolve, reject) => {
+    const parts = HOST.split('.').map(Number);
+    if (parts.length !== 4 || parts.some(x => !Number.isInteger(x) || x < 0 || x > 255) || PORT < 1 || PORT > 65535) {
+      return reject(new Error('Invalid SA-MP IPv4 or port'));
+    }
+    const socket = dgram.createSocket('udp4');
+    const packet = Buffer.from([83, 65, 77, 80, ...parts, PORT & 255, PORT >> 8, 105]);
+    let settled = false;
+    const finish = (err, players) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.close();
+      err ? reject(err) : resolve(players);
+    };
+    const timer = setTimeout(() => finish(new Error('SA-MP query timeout')), 3000);
+    socket.on('error', err => finish(err));
+    socket.on('message', msg => {
+      if (msg.length < 15 || !msg.subarray(0, 11).equals(packet)) return;
+      finish(null, msg.readUInt16LE(11));
+    });
+    socket.send(packet, PORT, HOST, err => { if (err) finish(err); });
+  });
+}
+
+async function updatePlayers() {
+  try {
+    const players = await queryPlayers();
+    client.user.setPresence({
+      status: 'online',
+      activities: [{ name: `ผู้เล่นออนไลน์ ${players} คน`, type: ActivityType.Playing }]
+    });
+    console.log('SA-MP players:', players);
+  } catch (err) {
+    console.error('SA-MP:', err.message);
+    client.user.setPresence({
+      status: 'idle',
+      activities: [{ name: 'เซิร์ฟเวอร์ออฟไลน์', type: ActivityType.Playing }]
+    });
+  }
+}
+
+async function logCPU() {
+  try {
+    const cpu = await si.currentLoad();
+    console.log('AMD Ryzen 9 5950X CPU:', Math.round(cpu.currentLoad) + '%');
+    // Discord does not provide a supported API for dynamically editing bot About Me.
+  } catch (err) {
+    console.error('CPU:', err.message);
+  }
+}
+
+client.once('clientReady', () => {
+  console.log('Bot online:', client.user.tag);
+  updatePlayers();
+  logCPU();
+  setInterval(updatePlayers, 15000);
+  setInterval(logCPU, 15000);
+});
+
+if (!process.env.TOKEN) throw new Error('Missing TOKEN in local .env');
+client.login(process.env.TOKEN);
